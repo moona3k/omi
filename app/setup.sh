@@ -9,9 +9,10 @@
 # - Android Studio (for Android)
 # - NDK 26.3.11579264 or above (to build Opus for ARM Devices)
 # - Opus Codec: https://opus-codec.org
-# Usages: 
+# Usages:
 # - $bash setup.sh ios
 # - $bash setup.sh android
+# - $bash setup.sh macos
 
 set -euo pipefail
 
@@ -41,6 +42,13 @@ function setup_firebase() {
   cp setup/prebuilt/google-services.json android/app/src/dev/
   cp setup/prebuilt/GoogleService-Info.plist ios/Config/Dev/
   cp setup/prebuilt/GoogleService-Info.plist ios/Runner/
+
+  # Copy Firebase config to macOS if needed
+  if [ "${1}" = "macos" ]; then
+    echo "Setting up Firebase for macOS..."
+    mkdir -p macos/Runner/
+    cp setup/prebuilt/GoogleService-Info.plist macos/Runner/
+  fi
 
   # Warn: Mocking, should remove
   mkdir -p android/app/src/prod/ ios/Config/Prod/
@@ -88,7 +96,7 @@ function setup_provisioning_profile() {
         echo "Installing fastlane..."
         brew install fastlane
     fi
-    
+
     MATCH_PASSWORD=omi fastlane match development --readonly \
         --app_identifier com.friend-app-with-wearable.ios12.development \
         --git_url "git@github.com:BasedHardware/omi-community-certs.git"
@@ -126,6 +134,48 @@ function build_ios() {
     && dart run build_runner build
 }
 
+# #######################
+# Enable macOS platform
+# #######################
+function enable_macos() {
+  echo "Enabling macOS support..."
+  flutter config --enable-macos-desktop
+
+  # Create macOS folder if it doesn't exist
+  if [ ! -d "macos" ]; then
+    flutter create --platforms=macos .
+  fi
+}
+
+# #################
+# Update Podfile
+# #################
+function update_podfile() {
+  echo "Updating macOS deployment target to 10.15..."
+
+  # Update Podfile
+  sed -i '' 's/platform :osx, .*/platform :osx, '\''10.15'\''/' macos/Podfile
+
+  # Add deployment target setting to post_install hook if needed
+  if ! grep -q "MACOSX_DEPLOYMENT_TARGET.*10.15" macos/Podfile; then
+    sed -i '' '/flutter_additional_macos_build_settings/a\'$'\n''    target.build_configurations.each do |config|\
+      config.build_settings['\''MACOSX_DEPLOYMENT_TARGET'\''] = '\''10.15'\''\
+    end' macos/Podfile
+  fi
+
+  # Update Xcode project file
+  sed -i '' 's/MACOSX_DEPLOYMENT_TARGET = 10.14/MACOSX_DEPLOYMENT_TARGET = 10.15/g' macos/Runner.xcodeproj/project.pbxproj
+}
+
+# ###########
+# Build macOS
+# ###########
+function build_macos() {
+  flutter pub get \
+    && pushd macos && pod install --repo-update && popd \
+    && dart run build_runner build
+}
+
 # #######
 # Run dev
 # #######
@@ -145,6 +195,14 @@ case "${1}" in
       && setup_firebase \
       && setup_app_env \
       && build
+    ;;
+  macos)
+    setup_firebase "macos" \
+      && setup_app_env \
+      && enable_macos \
+      && update_podfile \
+      && build_macos \
+      && echo -e "\n✅ macOS setup completed successfully! You can now run the app with:\n\n    flutter run -d macos\n"
     ;;
   *)
     error "Unexpected platform '${1}'"

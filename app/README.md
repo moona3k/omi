@@ -34,11 +34,18 @@ The Omi App is a Flutter-based mobile application that serves as the companion a
 
    # For Android
    bash setup.sh android
+
+   # For macOS
+   bash setup.sh macos
    ```
 
 3. Run the app:
    ```bash
+   # For iOS/Android
    flutter run --flavor dev
+
+   # For macOS
+   flutter run -d macos
    ```
 
 ## Need Help?
